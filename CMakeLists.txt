@@ -8,6 +8,7 @@ find_package(Catch2 3 REQUIRED)
 
 set(SOURCES
         LongestIncreasingSubSequences.cpp
+        TypeErasure.cpp
 )
 
 add_executable( cpp-snippets ${SOURCES} )
