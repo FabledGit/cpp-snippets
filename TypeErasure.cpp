@@ -14,20 +14,26 @@ namespace type_erasure
     private:
         struct ShapeConcept
         {
-            virtual ~ShapeConcept() {}
-            virtual std::unique_ptr<ShapeConcept> clone() const = 0;
+            ShapeConcept() = default;
+            ShapeConcept(const ShapeConcept &) = default;
+            ShapeConcept(ShapeConcept &&) = default;
+            auto operator=(const ShapeConcept &s) -> ShapeConcept & = default;
+            auto operator=(ShapeConcept &&s) -> ShapeConcept & = default;
+            virtual ~ShapeConcept() = default;
+
+            [[nodiscard]] virtual auto clone() const -> std::unique_ptr<ShapeConcept> = 0;
             virtual void draw() const = 0;
         };
 
         template <typename ConcreteShape, typename DrawStrategy>
         struct ShapeModel : public ShapeConcept
         {
-            ShapeModel(const ConcreteShape &shape, const DrawStrategy &strategy)
-                : m_shape{shape}, m_drawStrategy{strategy}
+            ShapeModel(ConcreteShape shape, DrawStrategy strategy)
+                : m_shape{std::move(shape)}, m_drawStrategy{std::move(strategy)}
             {
             }
 
-            std::unique_ptr<ShapeConcept> clone() const override
+            [[nodiscard]] auto clone() const -> std::unique_ptr<ShapeConcept> override
             {
                 return std::make_unique<ShapeModel>(*this);
             }
@@ -50,25 +56,27 @@ namespace type_erasure
 
     public:
         template <typename ConcreteShape, typename DrawStrategy>
-        Shape(const ConcreteShape &shape, const DrawStrategy &strategy)
-            : m_pImpl(std::make_unique<ShapeModel<ConcreteShape, DrawStrategy>>(shape, strategy))
+        Shape(ConcreteShape shape, DrawStrategy strategy)
+            : m_pImpl{std::make_unique<ShapeModel<ConcreteShape, DrawStrategy>>(std::move(shape), std::move(strategy))}
         {
         }
+
+        ~Shape() = default;
 
         // Special member functions
         Shape(const Shape &s)
-            : m_pImpl(s.m_pImpl->clone())
+            : m_pImpl{s.m_pImpl->clone()}
         {
         }
 
-        Shape &operator=(const Shape &s)
+        auto operator=(const Shape &s) -> Shape &
         {
             m_pImpl = s.m_pImpl->clone();
             return *this;
         }
 
         Shape(Shape &&s) = default;
-        Shape &operator=(Shape &&s) = default;
+        auto operator=(Shape &&s) -> Shape & = default;
     };
 
     void drawAllShapes(const std::vector<Shape> &shapes)
@@ -104,18 +112,18 @@ struct Circle
 
 const auto drawSquare = [](const Square &square)
 {
-    std::cout << "Square with side " << square.side << std::endl;
+    std::cout << "Square with side " << square.side << '\n';
 };
 
 const auto drawRectangle = [](const Rectangle &rect)
 {
     std::cout << "Rectangle with width " << rect.width
-              << " and height " << rect.height << std::endl;
+              << " and height " << rect.height << '\n';
 };
 
 const auto drawCircle = [](const Circle &circle)
 {
-    std::cout << "Circle with radius " << circle.radius << std::endl;
+    std::cout << "Circle with radius " << circle.radius << '\n';
 };
 
 // TEST CASES
@@ -130,7 +138,7 @@ TEST_CASE("Type Erasure")
     shapes.emplace_back(Square{1.5}, drawSquare);
     shapes.emplace_back(Rectangle{4.2, 5.8}, drawRectangle);
     // Draw all shapes
-    std::cout << std::endl
-              << "SHAPES:" << std::endl;
+    std::cout << '\n'
+              << "SHAPES:" << '\n';
     drawAllShapes(shapes);
 }

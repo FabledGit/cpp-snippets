@@ -1,0 +1,10 @@
+{
+    "files.associations": {
+        "vector": "cpp"
+    },
+    "C_Cpp.codeAnalysis.clangTidy.checks.disabled": [
+        "cppcoreguidelines-avoid-magic-numbers",
+        "readability-magic-numbers",
+        "readability-identifier-length"
+    ]
+}

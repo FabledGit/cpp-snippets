@@ -12,7 +12,7 @@
 template <typename T>
 struct Card
 {
-    T value;
+    T value{};
     size_t sizeOfPreviousPile{}; // back-pointer to top of previous pile upon insertion
 };
 
@@ -23,7 +23,7 @@ template <typename T>
 using Piles = std::vector<Pile<T>>;
 
 template <typename T>
-void print(const std::vector<T> &A, const char *msg = nullptr)
+void print(const std::vector<T> &values, const char *msg = nullptr)
 {
     if (msg)
     {
@@ -31,11 +31,11 @@ void print(const std::vector<T> &A, const char *msg = nullptr)
     }
     const char *prefix = "";
     std::cout << "{";
-    std::for_each(A.begin(), A.end(), [&](const auto &a) { //
-        std::cout << prefix << a;
+    std::for_each(values.begin(), values.end(), [&](const auto &value) { //
+        std::cout << prefix << value;
         prefix = ", ";
     });
-    std::cout << "}" << std::endl;
+    std::cout << "}" << '\n';
 }
 
 template <typename T>
@@ -47,7 +47,7 @@ void print(const Piles<T> &piles)
             std::cout << prefix << card.value << "-" << card.sizeOfPreviousPile;
             prefix = ", ";
         });
-        std::cout << std::endl;
+        std::cout << '\n';
     });
 }
 
@@ -59,23 +59,23 @@ void print(const Piles<T> &piles)
 // 5. An largest increasing sub-sequence can be generated in reverse by following the sizeOfPreviousPile from the last pile down
 // 6. The total number of Cards is equal to the total number of values
 template <typename T>
-void checkPatienceProperties(const Piles<T> piles)
+void checkPatienceProperties(const Piles<T> &piles)
 {
     // No pile can be empty
-    assert(std::none_of(piles.begin(), piles.end(), [](const auto &p)
-                        { return p.empty(); }));
+    assert(std::none_of(piles.begin(), piles.end(), [](const auto &pile)
+                        { return pile.empty(); }));
     // The cards in each pile are in decreasing value order
-    assert(std::all_of(piles.begin(), piles.end(), [](const auto &p)
-                       { return std::is_sorted(p.begin(), p.end(), [](const auto &a, const auto &b)
-                                               { return a.value > b.value; }); }));
+    assert(std::all_of(piles.begin(), piles.end(), [](const auto &pile)
+                       { return std::is_sorted(pile.begin(), pile.end(), [](const auto &lhs, const auto &rhs)
+                                               { return lhs.value > rhs.value; }); }));
     // The cards in each pile are in increasing sizeOfPreviousPile order
-    assert(std::all_of(piles.begin(), piles.end(), [](const auto &p)
-                       { return std::is_sorted(p.begin(), p.end(), [](const auto &a, const auto &b)
-                                               { return a.sizeOfPreviousPile < b.sizeOfPreviousPile; }); }));
+    assert(std::all_of(piles.begin(), piles.end(), [](const auto &pile)
+                       { return std::is_sorted(pile.begin(), pile.end(), [](const auto &lhs, const auto &rhs)
+                                               { return lhs.sizeOfPreviousPile < rhs.sizeOfPreviousPile; }); }));
 }
 
 template <typename T>
-Piles<T> patiencePiles(const std::vector<T> &values)
+auto patiencePiles(const std::vector<T> &values) -> Piles<T>
 {
     Piles<T> piles;
     for (const auto &value : values)
@@ -86,25 +86,25 @@ Piles<T> patiencePiles(const std::vector<T> &values)
             // Push new pile with current value, pointing to current top of the previous pile (if any)
             piles.push_back({{value, piles.empty() ? 0 : piles.back().size()}});
         }
-        else if (const auto it = std::lower_bound(piles.begin(), piles.end(), value, [](const auto &pile, const auto &value)
-                                                  { return pile.back().value < value; });
-                 it != piles.end())
+        else if (const auto found = std::lower_bound(piles.begin(), piles.end(), value, [](const auto &pile, const auto &value)
+                                                     { return pile.back().value < value; });
+                 found != piles.end())
         {
             // Found the first pile in the ordered pile vector whose top value is not less than the current value.
             // Push the current value on top of that pile, pointing to current top of the previous pile (if any)
-            it->push_back({value, it == piles.begin() ? 0 : prev(it)->size()});
+            found->push_back({value, found == piles.begin() ? 0 : prev(found)->size()});
         }
     }
     // Check basic invariants
     checkPatienceProperties(piles);
     // Check total number of Cards is equal to the total number of values
-    assert(values.size() == std::accumulate(piles.begin(), piles.end(), 0, [](auto acc, const auto &p)
-                                            { return acc + p.size(); }));
+    assert(values.size() == std::accumulate(piles.begin(), piles.end(), 0, [](auto acc, const auto &pile)
+                                            { return acc + pile.size(); }));
     return piles;
 }
 
 template <typename T>
-size_t longestIncreasingSubSequenceSize(const std::vector<T> &values)
+auto longestIncreasingSubSequenceSize(const std::vector<T> &values) -> size_t
 {
     return patiencePiles(values).size();
 }
@@ -114,6 +114,12 @@ class LongestIncreasingSubSequencesGenerator
 {
 public:
     LongestIncreasingSubSequencesGenerator() = delete;
+    ~LongestIncreasingSubSequencesGenerator() = default;
+    LongestIncreasingSubSequencesGenerator(const LongestIncreasingSubSequencesGenerator &) = delete;
+    auto operator=(const LongestIncreasingSubSequencesGenerator &) -> LongestIncreasingSubSequencesGenerator & = delete;
+    LongestIncreasingSubSequencesGenerator(LongestIncreasingSubSequencesGenerator &&) = delete;
+    auto operator=(LongestIncreasingSubSequencesGenerator &&) -> LongestIncreasingSubSequencesGenerator & = delete;
+
     LongestIncreasingSubSequencesGenerator(const std::vector<T> &values)
         : m_piles(strippedPiles(values))
     {
@@ -121,7 +127,7 @@ public:
         reset();
     }
 
-    std::vector<T> get() const
+    [[nodiscard]] auto get() const -> std::vector<T>
     {
         std::vector<T> result(m_piles.size());
         for (size_t i = 0; i < m_piles.size(); ++i)
@@ -131,7 +137,7 @@ public:
         return result;
     }
 
-    bool next()
+    [[nodiscard]] auto next() -> bool
     {
         // Try to advance to next position on last pile
         // If no next position, reset to first position, and apply logic on previous pile
@@ -146,7 +152,7 @@ public:
                 applyConstraints(i);
                 return true;
             }
-            else if (pile.size() > 1)
+            if (pile.size() > 1)
             {
                 position = topPosition(i - 1);
                 applyConstraints(i);
@@ -164,7 +170,7 @@ public:
     }
 
 private:
-    inline size_t topPosition(size_t i) const
+    [[nodiscard]] auto topPosition(size_t i) const -> size_t
     {
         return m_piles[i].size() - 1;
     }
@@ -184,7 +190,7 @@ private:
         }
     }
 
-    static Piles<T> strippedPiles(const std::vector<T> &values)
+    [[nodiscard]] static auto strippedPiles(const std::vector<T> &values) -> Piles<T>
     {
         auto piles = patiencePiles(values);
         if (piles.empty())
@@ -204,16 +210,16 @@ private:
             // Remove cards at bottom of each pile that are larger than the largest value of the next pile
             // (We use patiemcePiles invariants 1 and 2 here, so can take largest from first card)
             const auto maxValue = nextPile[0].value;
-            auto it = pile.begin();
+            auto iter = pile.begin();
             // TODO : optimise by a binary search on the decreasing values
-            while (it != pile.end() && it->value > maxValue)
+            while (iter != pile.end() && iter->value > maxValue)
             {
-                ++it;
+                ++iter;
             }
-            if (const size_t offset = std::distance(pile.begin(), it); offset)
+            if (const size_t offset = std::distance(pile.begin(), iter); offset)
             {
                 // TODO : instead use an array of min positions to avoid vector shifting overhead
-                pile.erase(pile.begin(), it);
+                pile.erase(pile.begin(), iter);
                 for (auto &card : piles[i])
                 {
                     card.sizeOfPreviousPile -= offset;
@@ -230,19 +236,19 @@ private:
 };
 
 // As per https://codesays.com/2016/solution-to-slalom-skiing-by-codility/
-int slalomSkiing(const std::vector<int> &A)
+auto slalomSkiing(const std::vector<int> &values) -> size_t
 {
     using T = long long;
-    T maxA = *(std::max_element(A.begin(), A.end())) + 1;
+    T maxA = *(std::max_element(values.begin(), values.end())) + 1;
     std::vector<T> extended;
-    for (auto i : A)
+    for (auto value : values)
     {
-        extended.push_back(2 * maxA + (T)i);
-        extended.push_back(2 * maxA - (T)i);
-        extended.push_back((T)i);
+        extended.push_back((2 * maxA) + (T)value);
+        extended.push_back((2 * maxA) - (T)value);
+        extended.push_back((T)value);
     }
 
-    print(A, "Original");
+    print(values, "Original");
     print(extended, "Extended");
 
     return longestIncreasingSubSequenceSize(extended);
@@ -253,31 +259,31 @@ int slalomSkiing(const std::vector<int> &A)
 
 TEST_CASE("Slalom Skiing")
 {
-    std::vector<int> A{15, 13, 5, 7, 4, 10, 12, 8, 2, 11, 5, 9, 3};
-    CHECK(slalomSkiing(A) == 8);
+    std::vector<int> values{15, 13, 5, 7, 4, 10, 12, 8, 2, 11, 5, 9, 3};
+    CHECK(slalomSkiing(values) == 8);
 }
 
 TEST_CASE("LongestIncreasing 1")
 {
-    std::vector<int> A{0, 8, 4, 12, 2, 10, 6, 14, 1, 9, 5, 13, 3, 11, 7, 15};
-    CHECK(longestIncreasingSubSequenceSize(A) == 6);
+    std::vector<int> values{0, 8, 4, 12, 2, 10, 6, 14, 1, 9, 5, 13, 3, 11, 7, 15};
+    CHECK(longestIncreasingSubSequenceSize(values) == 6);
 }
 
 TEST_CASE("LongestIncreasing 2")
 {
-    std::vector<int> A{3, 10, 2, 1, 20};
-    CHECK(longestIncreasingSubSequenceSize(A) == 3);
+    std::vector<int> values{3, 10, 2, 1, 20};
+    CHECK(longestIncreasingSubSequenceSize(values) == 3);
 }
 
 TEST_CASE("LongestIncreasing 3")
 {
-    std::vector<int> A{10, 22, 9, 33, 21, 50, 41, 60, 80};
-    CHECK(longestIncreasingSubSequenceSize(A) == 6);
+    std::vector<int> values{10, 22, 9, 33, 21, 50, 41, 60, 80};
+    CHECK(longestIncreasingSubSequenceSize(values) == 6);
 }
 
 TEST_CASE("LongestIncreasingSubSequences")
 {
-    std::vector<std::vector<int>> A = {
+    std::vector<std::vector<int>> values = {
         {},
         {1},
         {1, 2},
@@ -294,30 +300,30 @@ TEST_CASE("LongestIncreasingSubSequences")
         {0, 8, 4, 12, 2, 10, 6, 14, 1, 9, 5, 13, 3, 11, 7, 15},
     };
 
-    for (const auto &a : A)
+    for (const auto &value : values)
     {
-        std::cout << std::endl;
+        std::cout << '\n';
         std::cout << "LONGEST SUB-SEQUENCES FOR ";
-        print(a);
-        LongestIncreasingSubSequencesGenerator g(a);
+        print(value);
+        LongestIncreasingSubSequencesGenerator generator{value};
         do
         {
-            print(g.get());
-        } while (g.next());
+            print(generator.get());
+        } while (generator.next());
     }
 }
 
 TEST_CASE("LongestIncreasingSubSequences on permutations")
 {
     // This may take a while as we check every permutation
-    std::vector<int> A{1, 2, 3, 4, 5, 6, 7, 8, 9};
+    std::vector<int> values{1, 2, 3, 4, 5, 6, 7, 8, 9};
     do
     {
-        LongestIncreasingSubSequencesGenerator g(A);
+        LongestIncreasingSubSequencesGenerator generator{values};
         do
         {
-            const auto solution = g.get();
+            const auto solution = generator.get();
             CHECK(std::is_sorted(solution.begin(), solution.end()));
-        } while (g.next());
-    } while (std::next_permutation(A.begin(), A.end()));
+        } while (generator.next());
+    } while (std::next_permutation(values.begin(), values.end()));
 }
