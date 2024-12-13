@@ -7,8 +7,6 @@
 #include <numeric>
 #include <vector>
 
-#include <catch2/catch_all.hpp>
-
 template <typename T>
 struct Card
 {
@@ -139,23 +137,11 @@ public:
 
     [[nodiscard]] auto next() -> bool
     {
-        // Try to advance to next position on last pile
-        // If no next position, reset to first position, and apply logic on previous pile
-        // If reached first pile, return false
-        for (auto i = m_piles.size(); i; --i)
+        while (countDown())
         {
-            const auto &pile = m_piles[i - 1];
-            auto &position = m_positions[i - 1];
-            if (position > 0)
+            if (checkConstraints())
             {
-                --position;
-                applyConstraints(i);
                 return true;
-            }
-            if (pile.size() > 1)
-            {
-                position = topPosition(i - 1);
-                applyConstraints(i);
             }
         }
         return false;
@@ -175,19 +161,45 @@ private:
         return m_piles[i].size() - 1;
     }
 
-    void applyConstraints(size_t n)
+    [[nodiscard]] auto countDown() -> bool
     {
-        for (auto i = std::min(n, m_piles.size() - 1); i; --i)
+        // Try to advance to next position on last pile
+        // If no next position, reset to first position, and apply logic on previous pile
+        // If reached first pile, return false
+        for (auto i = m_piles.size(); i; --i)
         {
-            // Skip values in the next pile that are smaller than the current value in the current pile
-            const auto value = m_piles[i - 1][m_positions[i - 1]].value;
-            const auto &nextPile = m_piles[i];
-            auto &nextPosition = m_positions[i];
-            while (nextPosition > 0 && nextPile[nextPosition].value < value)
+            const auto &pile = m_piles[i - 1];
+            auto &position = m_positions[i - 1];
+            if (position > 0)
             {
-                --nextPosition;
+                --position;
+                return true;
+            }
+            if (pile.size() > 1)
+            {
+                position = topPosition(i - 1);
             }
         }
+        return false;
+    }
+
+    [[nodiscard]] auto checkConstraints() const -> bool
+    {
+        if (m_piles.empty())
+        {
+            return true;
+        }
+        bool ok{true};
+        for (auto i = m_piles.size() - 1; i && ok; --i)
+        {
+            const auto position = m_positions[i - 1];
+            const auto value = m_piles[i - 1][position].value;
+            const auto &nextCard = m_piles[i][m_positions[i]];
+            // Current value in the next pile must be larger than the current value in the current pile
+            // Current value in the next pile must have been added after the current value in the current pile
+            ok = nextCard.value > value && nextCard.sizeOfPreviousPile > position;
+        }
+        return ok;
     }
 
     [[nodiscard]] static auto strippedPiles(const std::vector<T> &values) -> Piles<T>
@@ -235,6 +247,110 @@ private:
     std::vector<size_t> m_positions;
 };
 
+// Generate all bitsets with S 1’s out of N, 0 <= S <= N <= 16
+class CombinationGenerator
+{
+public:
+    CombinationGenerator(size_t N, size_t S)
+    {
+        assert(N <= 16); // At most 16 bits supported
+        assert(S <= N);  // Number of set bits must be less than total number of bits
+        m_firstVal = (1 << S) - 1;
+        m_lastVal = m_firstVal << (N - S);
+    }
+
+    [[nodiscard]] auto first() const -> size_t { return m_firstVal; }
+    [[nodiscard]] auto last() const -> size_t { return m_lastVal; }
+
+    [[nodiscard]] static auto next(size_t v) -> size_t
+    {
+        auto t = (v | (v - 1)) + 1;
+        return t | ((((t & -t) / (v & -v)) >> 1) - 1);
+    }
+
+private:
+    size_t m_firstVal{};
+    size_t m_lastVal{};
+};
+
+template <typename T>
+class SlowLongestIncreasingSubSequencesGenerator
+{
+public:
+    SlowLongestIncreasingSubSequencesGenerator(const std::vector<T> &values)
+        : m_values{values}
+    {
+        ensureOrder();
+    }
+
+    [[nodiscard]] auto get() const -> std::vector<T>
+    {
+        std::vector<T> result(m_sequenceSize);
+        for (size_t i = 0, j = 0; i < m_values.size(); ++i)
+        {
+            auto bit = 1 << i;
+            if (m_currentVal & bit)
+            {
+                result[j++] = m_values[i];
+            }
+        }
+        return result;
+    }
+
+    [[nodiscard]] auto next() -> bool
+    {
+        if (m_currentVal == m_generator.last())
+        {
+            return false;
+        }
+        m_currentVal = m_generator.next(m_currentVal);
+        return ensureOrder();
+    }
+
+private:
+    [[nodiscard]] auto checkOrder() const -> bool
+    {
+        bool ok{true};
+        std::optional<int> prev;
+        bool ordered{true};
+        for (auto i = 0; i < m_values.size() && ordered; ++i)
+        {
+            auto bit = 1 << i;
+            if (m_currentVal & bit)
+            {
+                const auto next = m_values[i];
+                if (prev && prev > next)
+                {
+                    ordered = false;
+                }
+                else
+                {
+                    prev = next;
+                }
+            }
+        }
+        return ordered;
+    }
+
+    auto ensureOrder() -> bool
+    {
+        while (!checkOrder())
+        {
+            if (m_currentVal == m_generator.last())
+            {
+                return false;
+            }
+            m_currentVal = m_generator.next(m_currentVal);
+        }
+        return true;
+    }
+
+    std::vector<T> m_values;
+    size_t m_sequenceSize{longestIncreasingSubSequenceSize(m_values)};
+    CombinationGenerator m_generator{m_values.size(), m_sequenceSize};
+    size_t m_currentVal{m_generator.first()};
+};
+
 // As per https://codesays.com/2016/solution-to-slalom-skiing-by-codility/
 auto slalomSkiing(const std::vector<int> &values) -> size_t
 {
@@ -257,28 +373,133 @@ auto slalomSkiing(const std::vector<int> &values) -> size_t
 // TEST CASES
 //===========
 
+#include <chrono>
+#include <functional>
+#include <iomanip>
+
+#include <catch2/catch_all.hpp>
+
+void time_it(std::function<void()> timed, const std::string &what = "EXEC TIME:")
+{
+    const auto start = std::chrono::system_clock::now();
+    timed();
+    const auto stop = std::chrono::system_clock::now();
+    std::chrono::duration<double, std::milli> time = stop - start;
+    std::cout << std::setw(8) << time.count() << " for " << what << "\n";
+}
+
+auto combinationCount(size_t n, size_t k) -> size_t
+{
+    if (k > n)
+    {
+        return 0;
+    }
+    k = std::min(k, n - k);
+    if (k == 0)
+    {
+        return 1;
+    }
+    size_t result = n;
+    for (size_t i = 2; i <= k; ++i)
+    {
+        result *= (n - i + 1);
+        result /= i;
+    }
+    return result;
+}
+
+void testCombinationGenerator(size_t N, size_t S)
+{
+    CombinationGenerator g{N, S};
+    size_t count{};
+    auto val = g.first();
+    while (true)
+    {
+        ++count;
+        if (val == g.last())
+        {
+            break;
+        }
+        val = g.next(val);
+    }
+
+    CHECK(count == combinationCount(N, S));
+};
+
+auto countIncreasingSubSequences(const std::vector<int> &values) -> size_t
+{
+    const size_t S = longestIncreasingSubSequenceSize(values);
+    const size_t N = values.size();
+
+    if (S == 1)
+    {
+        return N;
+    }
+    if (S == N)
+    {
+        return 1;
+    }
+    CombinationGenerator g{N, S};
+    size_t count{};
+    auto val = g.first();
+    while (true)
+    {
+        std::optional<int> prev;
+        bool ordered{true};
+        for (size_t i = 0; i < N && ordered; ++i)
+        {
+            auto bit = 1 << i;
+            if (val & bit)
+            {
+                const auto next = values[i];
+                if (prev && prev > next)
+                {
+                    ordered = false;
+                }
+                else
+                {
+                    prev = next;
+                }
+            }
+        }
+        if (ordered)
+        {
+            ++count;
+        }
+        if (val == g.last())
+        {
+            break;
+        }
+        val = g.next(val);
+    }
+    return count;
+}
+
+template <typename Generator>
+void permutationsTest(size_t N)
+{
+    std::vector<int> values(N);
+    std::iota(values.begin(), values.end(), 1);
+    do
+    {
+        Generator generator{values};
+        do
+        {
+        } while (generator.next());
+    } while (std::next_permutation(values.begin(), values.end()));
+}
+
 TEST_CASE("Slalom Skiing")
 {
-    std::vector<int> values{15, 13, 5, 7, 4, 10, 12, 8, 2, 11, 5, 9, 3};
+    const std::vector<int> values{15, 13, 5, 7, 4, 10, 12, 8, 2, 11, 5, 9, 3};
     CHECK(slalomSkiing(values) == 8);
 }
 
-TEST_CASE("LongestIncreasing 1")
+TEST_CASE("LongestIncreasingSubSequenceSize")
 {
-    std::vector<int> values{0, 8, 4, 12, 2, 10, 6, 14, 1, 9, 5, 13, 3, 11, 7, 15};
-    CHECK(longestIncreasingSubSequenceSize(values) == 6);
-}
-
-TEST_CASE("LongestIncreasing 2")
-{
-    std::vector<int> values{3, 10, 2, 1, 20};
-    CHECK(longestIncreasingSubSequenceSize(values) == 3);
-}
-
-TEST_CASE("LongestIncreasing 3")
-{
-    std::vector<int> values{10, 22, 9, 33, 21, 50, 41, 60, 80};
-    CHECK(longestIncreasingSubSequenceSize(values) == 6);
+    CHECK(longestIncreasingSubSequenceSize<int>({0, 8, 4, 12, 2, 10, 6, 14, 1, 9, 5, 13, 3, 11, 7, 15}) == 6);
+    CHECK(longestIncreasingSubSequenceSize<int>({3, 10, 2, 1, 20}) == 3);
+    CHECK(longestIncreasingSubSequenceSize<int>({10, 22, 9, 33, 21, 50, 41, 60, 80}) == 6);
 }
 
 TEST_CASE("LongestIncreasingSubSequences")
@@ -288,10 +509,12 @@ TEST_CASE("LongestIncreasingSubSequences")
         {1},
         {1, 2},
         {2, 1},
+        {2, 4, 1, 3},
         {3, 1, 4, 2},
         {3, 4, 1, 2},
         {5, 2, 2, 5},
         {10, 20, 3, 40},
+        {3, 4, 1, 2, 5},
         {8, 9, 12, 10, 11},
         {5, 4, 3, 2, 1},
         {3, 2, 6, 4, 5, 1},
@@ -316,7 +539,9 @@ TEST_CASE("LongestIncreasingSubSequences")
 TEST_CASE("LongestIncreasingSubSequences on permutations")
 {
     // This may take a while as we check every permutation
-    std::vector<int> values{1, 2, 3, 4, 5, 6, 7, 8, 9};
+    constexpr size_t N = 8;
+    std::vector<int> values(N);
+    std::iota(values.begin(), values.end(), 1);
     do
     {
         LongestIncreasingSubSequencesGenerator generator{values};
@@ -326,4 +551,50 @@ TEST_CASE("LongestIncreasingSubSequences on permutations")
             CHECK(std::is_sorted(solution.begin(), solution.end()));
         } while (generator.next());
     } while (std::next_permutation(values.begin(), values.end()));
+}
+
+TEST_CASE("CombinationGenerator")
+{
+    testCombinationGenerator(16, 3);
+    testCombinationGenerator(16, 0);
+    testCombinationGenerator(16, 16);
+    testCombinationGenerator(0, 0);
+}
+
+TEST_CASE("countIncreasingSubSequences")
+{
+    CHECK(countIncreasingSubSequences({2, 4, 1, 3}) == 3);
+    CHECK(countIncreasingSubSequences({3, 4, 1, 2}) == 2);
+    CHECK(countIncreasingSubSequences({3, 10, 2, 1, 20}) == 1);
+    CHECK(countIncreasingSubSequences({0, 8, 4, 12, 2, 10, 6, 14, 1, 9, 5, 13, 3, 11, 7, 15}) == 4);
+}
+
+TEST_CASE("LongestIncreasingSubSequences Count Checking")
+{
+    // This may take a while as we check every permutation
+    constexpr size_t N = 8;
+    std::vector<int> values(N);
+    std::iota(values.begin(), values.end(), 1);
+    do
+    {
+        LongestIncreasingSubSequencesGenerator generator{values};
+        size_t lissCount{};
+        do
+        {
+            ++lissCount;
+        } while (generator.next());
+        const auto checkCount = countIncreasingSubSequences(values);
+        CHECK(lissCount == checkCount);
+    } while (std::next_permutation(values.begin(), values.end()));
+}
+
+TEST_CASE("LongestIncreasingSubSequencesGenerator Performance")
+{
+    // This may take a while as we check every permutation
+    std::cout << "Performance" << '\n';
+    constexpr size_t N = 9;
+    time_it([]()
+            { permutationsTest<LongestIncreasingSubSequencesGenerator<int>>(N); }, "Fast");
+    time_it([]()
+            { permutationsTest<SlowLongestIncreasingSubSequencesGenerator<int>>(N); }, "Slow");
 }
