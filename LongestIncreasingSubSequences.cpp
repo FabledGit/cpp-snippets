@@ -108,7 +108,7 @@ auto longestIncreasingSubSequenceSize(const std::vector<T> &values) -> size_t
     return patiencePiles(values).size();
 }
 
-// Forward Iterator that takes a Generator which must provide the following:
+// Forward Iterator over a Generator which must provide the following:
 //      auto first() const -> Value (provide first value)
 //      auto next(Value& value) const -> bool (advance value to next state, or return false if last state)
 //      auto get(const Value& value) const -> Result (return result for given iterator value)
@@ -169,27 +169,48 @@ private:
     std::optional<Value> m_value;
 };
 
+// Use CRTP to automatically provide begin() and end()
+template <typename Generator, typename Value, typename Result>
+class GeneratorBase
+{
+    using Iterator = GeneratorIterator<Generator, Value, Result>;
+
+public:
+    using iterator_type = Iterator;
+    using value_type = Value;
+    using result_type = Result;
+
+    [[nodiscard]] auto begin() const -> Iterator { return Iterator::begin(rself()); }
+    [[nodiscard]] auto end() const -> Iterator { return Iterator::end(rself()); }
+
+private:
+    friend Generator;
+    GeneratorBase() = default;
+    [[nodiscard]] auto rself() const -> const Generator & { return static_cast<const Generator &>(*this); }
+};
+
 // Generate all longest increasing sub-sequences using patiencePiles
 template <typename T>
 class LongestIncreasingSubSequencesGenerator
+    : public GeneratorBase<LongestIncreasingSubSequencesGenerator<T>,
+                           std::vector<size_t>,
+                           std::vector<T>>
 {
-    using Positions = std::vector<size_t>;
-    using Sequence = std::vector<T>;
-    using Iterator = GeneratorIterator<LongestIncreasingSubSequencesGenerator, Positions, Sequence>;
-
 public:
+    using Iterator = typename LongestIncreasingSubSequencesGenerator::iterator_type;
+
     LongestIncreasingSubSequencesGenerator() = delete;
 
-    LongestIncreasingSubSequencesGenerator(const Sequence &values)
+    LongestIncreasingSubSequencesGenerator(const std::vector<T> &values)
         : m_piles(strippedPiles(values))
     {
     }
 
-    [[nodiscard]] auto begin() const -> Iterator { return Iterator::begin(*this); }
-    [[nodiscard]] auto end() const -> Iterator { return Iterator::end(*this); }
-
 private:
     friend Iterator;
+
+    using Positions = typename LongestIncreasingSubSequencesGenerator::value_type;
+    using Sequence = typename LongestIncreasingSubSequencesGenerator::result_type;
 
     [[nodiscard]] auto get(const Positions &positions) const -> Sequence
     {
@@ -315,10 +336,10 @@ private:
 
 // Generate all bitsets with S 1’s out of N, 0 <= S <= N <= sizeof(T) * 8
 template <typename T = u_int32_t>
-class CombinationGenerator
+class CombinationGenerator : public GeneratorBase<CombinationGenerator<T>, T, T>
 {
 public:
-    using Iterator = GeneratorIterator<CombinationGenerator, T, T>;
+    using Iterator = typename CombinationGenerator::iterator_type;
 
     CombinationGenerator(size_t N, size_t S)
     {
@@ -327,9 +348,6 @@ public:
         m_firstVal = (1 << S) - 1;
         m_lastVal = m_firstVal << (N - S);
     }
-
-    [[nodiscard]] auto begin() const -> Iterator { return Iterator::begin(*this); }
-    [[nodiscard]] auto end() const -> Iterator { return Iterator::end(*this); }
 
 private:
     friend Iterator;
@@ -442,25 +460,26 @@ auto reverse_bits(T n) -> T
 // in the fast version.
 template <typename T, typename U = u_int32_t>
 class SlowLongestIncreasingSubSequencesGenerator
-{
-    using CombinationGenerator = CombinationGenerator<U>;
-    using CombinationIterator = typename CombinationGenerator::Iterator;
-    using Sequence = std::vector<T>;
-    using Iterator = GeneratorIterator<SlowLongestIncreasingSubSequencesGenerator, CombinationIterator, Sequence>;
+    : public GeneratorBase<SlowLongestIncreasingSubSequencesGenerator<T, U>,
+                           typename CombinationGenerator<U>::Iterator,
+                           std::vector<T>>
 
+{
 public:
-    SlowLongestIncreasingSubSequencesGenerator(Sequence values)
+    using Iterator = typename SlowLongestIncreasingSubSequencesGenerator::iterator_type;
+
+    SlowLongestIncreasingSubSequencesGenerator(std::vector<T> values)
         : m_values{std::move(values)}
     {
     }
 
-    [[nodiscard]] auto begin() const -> Iterator { return Iterator::begin(*this); }
-    [[nodiscard]] auto end() const -> Iterator { return Iterator::end(*this); }
-
 private:
     friend Iterator;
 
-    [[nodiscard]] auto get(const CombinationIterator &iterator) const -> std::vector<T>
+    using CombinationIterator = typename SlowLongestIncreasingSubSequencesGenerator::value_type;
+    using Sequence = typename SlowLongestIncreasingSubSequencesGenerator::result_type;
+
+    [[nodiscard]] auto get(const CombinationIterator &iterator) const -> Sequence
     {
         assert(iterator != m_generator.end());
         std::vector<T> result(m_sequenceSize);
@@ -542,7 +561,7 @@ private:
 
     std::vector<T> m_values;
     size_t m_sequenceSize{longestIncreasingSubSequenceSize(m_values)};
-    CombinationGenerator m_generator{m_values.size(), m_sequenceSize};
+    CombinationGenerator<U> m_generator{m_values.size(), m_sequenceSize};
 };
 
 // As per https://codesays.com/2016/solution-to-slalom-skiing-by-codility/
