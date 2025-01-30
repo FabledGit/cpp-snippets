@@ -6,6 +6,7 @@
 #include <cassert>
 #include <iostream>
 #include <numeric>
+#include <optional>
 #include <vector>
 
 template <typename T>
